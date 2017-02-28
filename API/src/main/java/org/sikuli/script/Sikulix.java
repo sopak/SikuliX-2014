@@ -928,7 +928,7 @@ public class Sikulix {
    * @param timeout  value in milli-seconds during normal operation
    * @return a VNCScreen object
    */
-  public static VNCScreen vncStart(String theIP, int thePort, int cTimeout, int timeout) {
-    return VNCScreen.start(theIP, thePort, cTimeout, timeout);
+  public static VNCScreen vncStart(String theIP, int thePort, String password, int cTimeout, int timeout) {
+    return VNCScreen.start(theIP, thePort, password, cTimeout, timeout);
   }
 }

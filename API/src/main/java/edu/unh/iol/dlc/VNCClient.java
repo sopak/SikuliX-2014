@@ -17,16 +17,11 @@
  */
 package edu.unh.iol.dlc;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
+import java.io.*;
 import java.net.Socket;
+import java.nio.charset.Charset;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 import org.sikuli.basics.Debug;
 
@@ -37,12 +32,40 @@ import org.sikuli.basics.Debug;
  * @author Mike Johnson
  */
 public class VNCClient {
+  private static final SortedSet<ProtocolVersion> SUPPORTED_VERSIONS;
+  static {
+    SUPPORTED_VERSIONS = new TreeSet<>();
+    SUPPORTED_VERSIONS.add(ProtocolVersion.parse("RFB 003.003"));
+    SUPPORTED_VERSIONS.add(ProtocolVersion.parse("RFB 003.007"));
+    SUPPORTED_VERSIONS.add(ProtocolVersion.parse("RFB 003.008"));
+  }
+
+  private static final Charset ASCII = Charset.forName("US-ASCII");
+
+  public static final int SECURITY_TYPE_INVALID = 0;
+  public static final int SECURITY_TYPE_NONE = 1;
+  public static final int SECURITY_TYPE_VNC_AUTH = 2;
+
+  private static final int VNC_KEY_EVENT_MSG = 4;
+
+  private static final int VNC_KEY_EVENT_DOWN = 1;
+  private static final int VNC_KEY_EVENT_UP = 0;
+
+  private static final int VNC_POINTER_EVENT_MSG = 5;
+  public static final int VNC_POINTER_EVENT_BUTTON_1 = 1 << 0;
+  public static final int VNC_POINTER_EVENT_BUTTON_2 = 1 << 1;
+  public static final int VNC_POINTER_EVENT_BUTTON_3 = 1 << 2;
+  public static final int VNC_POINTER_EVENT_BUTTON_4 = 1 << 3;
+  public static final int VNC_POINTER_EVENT_BUTTON_5 = 1 << 4;
+  public static final int VNC_POINTER_EVENT_BUTTON_6 = 1 << 5;
+  public static final int VNC_POINTER_EVENT_BUTTON_7 = 1 << 6;
+  public static final int VNC_POINTER_EVENT_BUTTON_8 = 1 << 7;
 
   /*
-     * Below are the fields and objects associated with the handshaking phase
-     */
-  private BufferedWriter out = null;
-  private BufferedReader in = null;
+         * Below are the fields and objects associated with the handshaking phase
+         */
+  private BufferedOutputStream out = null;
+  private BufferedInputStream in = null;
   private DataOutputStream dataOut = null;
   private DataInputStream dataIn = null;
   private int version = 0;
@@ -58,14 +81,10 @@ public class VNCClient {
     socket = soc;
     try {
       socket.setTcpNoDelay(true);
-      out = new BufferedWriter(
-              new OutputStreamWriter(socket.getOutputStream(), "US-ASCII"));
-      in = new BufferedReader(
-              new InputStreamReader(socket.getInputStream(), "US-ASCII"));
-      dataOut = new DataOutputStream(
-              new BufferedOutputStream(socket.getOutputStream()));
-      dataIn = new DataInputStream(
-              new BufferedInputStream(socket.getInputStream()));
+      out = new BufferedOutputStream(socket.getOutputStream());
+      in = new BufferedInputStream(socket.getInputStream());
+      dataOut = new DataOutputStream(out);
+      dataIn = new DataInputStream(in);
     } catch (IOException e) {
       Debug.log(-1, "Error: IO Exception" + e);
     }
@@ -84,13 +103,23 @@ public class VNCClient {
    * The encoding of the Protocol Version message is 7-bit ASCII.
    */
   protected void protocolHandshake() throws IOException {
-    String protocolVersion = in.readLine();
-    VersionParser parser = new VersionParser(protocolVersion);
-    final ProtocolVersion parse = parser.parse();
-    final String replyCode = parse.getReplyCode();
-    out.write(replyCode + "\n");
+    ProtocolVersion version = ProtocolVersion.parse(readLine());
+
+    ProtocolVersion clientVersion = null;
+    for (ProtocolVersion supportedVersion : SUPPORTED_VERSIONS) {
+      if (version.compareTo(supportedVersion) >= 0) {
+        clientVersion = supportedVersion;
+      }
+    }
+
+    if (clientVersion == null) {
+      throw new IOException("Unsupported protocol version: " + version);
+    }
+
+    final String replyCode = clientVersion.toString();
+    writeLine(replyCode);
     out.flush();
-    version = Character.getNumericValue(replyCode.charAt(10));
+    this.version = clientVersion.getMinorVersion();
   }
 
   /**
@@ -101,44 +130,47 @@ public class VNCClient {
    * wants to use. If there is an error the server tells the client and the
    * client prints the reason to the standard error.
    *
-   * @param desiredSecurityType The desired security type as defined by
-   *                            the standard.
    * @return selectedType If there is an IOerror the method returns a -1,
    * otherwise it returns the security type selected
    * for use.
    */
   protected int securityInit(int desiredSecurityType) throws IOException {
-    int selectedType = 0;
-    byte[] securityTypes = new byte[10];
     if (version >= 7) {
       int numSecurityTypes = (int) dataIn.readByte();
       if (numSecurityTypes == 0) {
-        Debug.log(-1, "Error: Server reported" +
-                " an error, closing connection");
+        int reasonLength = dataIn.readInt();
+        byte[] reasonBytes = new byte[reasonLength];
+        readFully(reasonBytes);
+        String reason = new String(reasonBytes, "US-ASCII");
+        Debug.log(-1, "Error: Server reported an error, closing connection: %s", reason);
         socket.close();
+        return -1;
       }
-      dataIn.read(securityTypes, 0, numSecurityTypes);
-      boolean flag = false;
+
+      byte[] securityTypes = new byte[numSecurityTypes];
+      readFully(securityTypes);
+
+      boolean foundDesiredSecurityType = false;
       for (int i = 0; i < securityTypes.length; i++) {
         if (securityTypes[i] == desiredSecurityType) {
-          flag = true;
-          dataOut.write((byte) desiredSecurityType);
-          dataOut.flush();
+          foundDesiredSecurityType = true;
           break;
         }
       }
-      if (flag) {
-        selectedType = desiredSecurityType;
-        return selectedType;
+
+      if (foundDesiredSecurityType) {
+        dataOut.write((byte) desiredSecurityType);
+        dataOut.flush();
+
+        return desiredSecurityType;
+      } else {
+        Debug.log(-1, "Error: Desired security type not supported by Server, closing connection");
+        socket.close();
+        return -1;
       }
-      Debug.log(-1, "Error: Desired Security Type" +
-              " Not supported by Server, closing connection");
-      socket.close();
     } else {
-      selectedType = dataIn.readInt();
-      return selectedType;
+      return dataIn.readInt();
     }
-    return selectedType;
   }
 
   /**
@@ -146,10 +178,12 @@ public class VNCClient {
    * methods involved with that security type.
    *
    * @param type The security type to be used as defined in the standard
+   * @param password
    */
-  protected void securityMethod(int type) {
+  protected void securityMethod(int type, String password) throws IOException
+  {
     switch (type) {
-      case 0:
+      case SECURITY_TYPE_INVALID:
         try {
           Debug.log(-1, "Error: Server" +
                   " reported an error, closing connection");
@@ -158,27 +192,33 @@ public class VNCClient {
           Debug.log(-1, "Error: IO Exception" + e);
         }
         break;
-      case 1:
+      case SECURITY_TYPE_NONE:
         if (version == 8) {
           securityResult();
         }
         break;
-      case 2:
-                /* TODO: Add VNC Authentication.
-                 * From the 3.8 standard:
-                 * "VNC authentication is to be used and protocol data is to be
-                 * sent unencrypted. The server sends a random 16-byte
-                 * challenge,the client encrypts the challenge with DES using
-                 * a password supplied by the user as the key, and sends the
-                 * resulting 16-byte response.
-                 * The protocol continues with the SecurityResult message."
-                 */
-        //securityResult();
+      case SECURITY_TYPE_VNC_AUTH:
+        byte[] challenge = new byte[16];
+        readFully(challenge);
+
+        byte[] key = new byte[8];
+        byte[] passwordBytes = password.getBytes(ASCII);
+        System.arraycopy(passwordBytes, 0, key, 0, Math.min(key.length, passwordBytes.length));
+
+        DesCipher des = new DesCipher(key);
+
+        byte[] result = challenge.clone();
+        des.encrypt(result, 0, result, 0);
+        des.encrypt(result, 8, result, 8);
+
+        out.write(result);
+        out.flush();
+
+        securityResult();
         break;
       default:
         try {
-          Debug.log(-1, "Error: Desired Security" +
-                  " Type Not supported, closing connection");
+          Debug.log(-1, "Error: Desired security type Not supported, closing connection");
           socket.close();
         } catch (IOException e) {
           Debug.log(-1, "Error: IO Exception" + e);
@@ -193,9 +233,8 @@ public class VNCClient {
   protected void securityResult() {
     try {
       int securityResult = dataIn.readInt();
-      if (securityResult == 1) {
-        Debug.log(3,
-                "Error: Server reported an error, closing connection");
+      if (securityResult != 0) {
+        Debug.log(3, "Error: Server reported an error (%d), closing connection", securityResult);
         socket.close();
       }
     } catch (IOException e) {
@@ -224,7 +263,7 @@ public class VNCClient {
    */
   protected synchronized int[] listenServerInit() throws IOException,
           InterruptedException {
-    int[] data = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    int[] data = new int[12];
     data[0] = dataIn.readUnsignedShort();  //width
     data[1] = dataIn.readUnsignedShort();  //height
     data[2] = dataIn.readUnsignedByte();   //bitsPerPixel
@@ -354,8 +393,8 @@ public class VNCClient {
    * @throws IOException If there is a socket error.
    */
   protected void keyDown(int key) throws IOException {
-    dataOut.writeByte(4); //message identifier
-    dataOut.writeByte(1); //key down flag
+    dataOut.writeByte(VNC_KEY_EVENT_MSG);
+    dataOut.writeByte(VNC_KEY_EVENT_DOWN);
     dataOut.writeByte(0); //padding
     dataOut.writeByte(0); //padding
     dataOut.writeInt(key);
@@ -370,8 +409,8 @@ public class VNCClient {
    * @throws IOException If there is a socket error.
    */
   protected void keyUp(int key) throws IOException {
-    dataOut.writeByte(4); //message identifier
-    dataOut.writeByte(0); //key up flag
+    dataOut.writeByte(VNC_KEY_EVENT_MSG); //message identifier
+    dataOut.writeByte(VNC_KEY_EVENT_UP);
     dataOut.writeByte(0); //padding
     dataOut.writeByte(0); //padding
     dataOut.writeInt(key);
@@ -384,33 +423,20 @@ public class VNCClient {
    * buttons one through eight respectively.  A zero means release that
    * button, and a one means depress that button.
    *
-   * @param bOne   Button One
-   * @param bTwo   Button Two
-   * @param bThree Button Three
-   * @param bFour  Button Four
-   * @param bFive  Button Five
-   * @param bSix   Button Six
-   * @param bSeven Button Seven
-   * @param bEight Button Eight
+   * @param buttonState logical or of BUTTON_N_DOWN
    * @param x      X coordinate of action
    * @param y      Y coordinate of action
    * @throws IOException If there is a socket error.
    */
-  protected void mouseEvent(int bOne, int bTwo, int bThree,
-                            int bFour, int bFive, int bSix, int bSeven,
-                            int bEight, int x, int y) throws IOException {
-    int[] buttons = {bOne, bTwo, bThree, bFour,
-            bFive, bSix, bSeven, bEight};
-    byte flag = 0;
-    for (int i = 0; i < 8; i++) {
-      flag += buttons[i] << (i);
-    }
-    dataOut.writeByte(5);
-    dataOut.writeByte(flag);
+  protected void mouseEvent(int buttonState, int x, int y) throws IOException {
+    byte buttons = (byte) buttonState;
+
+    dataOut.writeByte(VNC_POINTER_EVENT_MSG);
+    dataOut.writeByte(buttons);
     dataOut.writeShort(x);
     dataOut.writeShort(y);
     dataOut.flush();
-    Debug.log(4, "MouseEvent-" + Byte.toString(flag));
+    Debug.log(4, "MouseEvent-" + Byte.toString(buttons));
   }
 
   /**
@@ -430,6 +456,21 @@ public class VNCClient {
       dataOut.writeByte(b[i]);
     }
     dataOut.flush();
+  }
+
+  protected void readFully(byte[] buffer) throws IOException
+  {
+    int remaining = buffer.length;
+    int offset = 0;
+    int bytesRead = 0;
+    while(remaining > 0 && (bytesRead = dataIn.read(buffer, offset, remaining)) != -1) {
+      remaining -= bytesRead;
+      offset += bytesRead;
+    }
+
+    if (bytesRead == -1) {
+      throw new EOFException();
+    }
   }
 
   /**
@@ -460,6 +501,25 @@ public class VNCClient {
    */
   protected synchronized int readInt() throws IOException {
     return dataIn.readInt();
+  }
+
+  protected synchronized String readLine() throws IOException
+  {
+    ByteArrayOutputStream tmp = new ByteArrayOutputStream();
+    int byteRead;
+    while((byteRead = in.read()) != -1) {
+      if (byteRead == '\n') {
+        break;
+      }
+      tmp.write(byteRead);
+    }
+    return new String(tmp.toByteArray(), ASCII);
+  }
+
+  protected synchronized void writeLine(String line) throws IOException
+  {
+    out.write(line.getBytes(ASCII));
+    out.write('\n');
   }
 
   /**

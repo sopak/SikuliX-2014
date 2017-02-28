@@ -84,9 +84,8 @@ public class ConnectionController extends GraphicsEnvironment {
 	/**
 	 * Tells one of the VNC Client Threads to connect to the VNC server
 	 */
-	public void openConnection(int index){
-		//since other security types are not yet supported
-		threads.get(index).openConnection(1, 1);
+	public void openConnection(int index, String password){
+		threads.get(index).openConnection(1, password);
 	}
 
 	/**

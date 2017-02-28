@@ -77,7 +77,7 @@ public class VNCScreen extends Region implements EventObserver, IScreen {
 
   private static List<VNCScreen> activeScreens = new ArrayList<>();
 
-  public static VNCScreen start(String theIP, int thePort, int theConnectTimeout, int theIOTimeout) {
+  public static VNCScreen start(String theIP, int thePort, String password, int theConnectTimeout, int theIOTimeout) {
     log(lvl, "VNCScreen: request for connection %s:%d", theIP, thePort);
     Socket sock = null;
     try {
@@ -95,7 +95,7 @@ public class VNCScreen extends Region implements EventObserver, IScreen {
     if (sock == null) {
       throw new UnsupportedOperationException("VNCScreen: connection not possible");
     }
-    VNCScreen vnc = new VNCScreen(sock);
+    VNCScreen vnc = new VNCScreen(sock, password);
     if (vnc.isUsable()) {
       if (!activeScreens.contains(vnc)) {
         activeScreens.add(vnc);
@@ -142,7 +142,7 @@ public class VNCScreen extends Region implements EventObserver, IScreen {
     super.initScreen(this);
   }
 
-  public VNCScreen(Socket sock) {
+  public VNCScreen(Socket sock, String password) {
     super();
     ConnectionController cc = ConnectionController.getActiveController(0);
     connNum = 0;
@@ -151,7 +151,7 @@ public class VNCScreen extends Region implements EventObserver, IScreen {
     } else {
       connNum = cc.newConnection(sock);
     }
-    cc.openConnection(connNum);
+    cc.openConnection(connNum, password);
     cc.start(connNum);
     initScreens();
     _curID = _primaryScreen;

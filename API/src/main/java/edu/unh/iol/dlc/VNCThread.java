@@ -88,11 +88,12 @@ public class VNCThread extends Thread{
      *                      1 None
      *                      2 VNC Authentication
      */
-    public void openConnection(int connectOthers, int securityType){
+    public void openConnection(int connectOthers, String password){
 
     	try{
     		client.protocolHandshake();
-    		client.securityMethod(client.securityInit(securityType));
+			int selectedSecurityType = client.securityInit(password != null ? VNCClient.SECURITY_TYPE_VNC_AUTH : VNCClient.SECURITY_TYPE_NONE);
+			client.securityMethod(selectedSecurityType, password);
     		client.clientInit(connectOthers);
     		int[] firstInput = client.listenServerInit();
     		String secondInput = client.readDesktopName();

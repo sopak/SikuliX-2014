@@ -1,27 +1,57 @@
 package edu.unh.iol.dlc;
 
-import org.junit.Assert;
 import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
+
 public class ProtocolVersionTest {
-
-   private static final String RFB_003_003 = "RFB 003.003";
-   private static final String INVALID_PROTOCOL = "123456789012";
-
    @Test(expected = RuntimeException.class)
    public void throwErrorWhenNullIsPassed() {
-      ProtocolVersion.fromString(null);
+      ProtocolVersion.parse(null);
    }
 
-   @Test(expected = RuntimeException.class)
-   public void throwErrorWhenInvalidCodeIsPassed() {
-      ProtocolVersion.fromString(INVALID_PROTOCOL);
+   @Test(expected = IllegalArgumentException.class)
+   public void nullThrowsException() {
+      ProtocolVersion.parse(null);
+   }
+
+   @Test(expected = IllegalArgumentException.class)
+   public void shortThrowsException() {
+      ProtocolVersion.parse("00000000");
+   }
+
+   @Test(expected = IllegalArgumentException.class)
+   public void longThrowsException() {
+      ProtocolVersion.parse("1234567890123");
+   }
+
+   @Test(expected = IllegalArgumentException.class)
+   public void unrecognizedDigitVersionThrowsException() {
+      ProtocolVersion.parse("12345678901");
+   }
+
+   @Test(expected = IllegalArgumentException.class)
+   public void unrecognizedCharacterVersionThrowsException() {
+      ProtocolVersion.parse("aaaaaaaaaaa");
+   }
+
+   public void unsupportedVersionThrowsException() {
+      ProtocolVersion parsedVersion = ProtocolVersion.parse("RFB 005.001");
+      assertEquals(5, parsedVersion.getMajorVersion());
+      assertEquals(1, parsedVersion.getMinorVersion());
    }
 
    @Test
-   public void getCorrectCode() {
-      final ProtocolVersion protocolVersion = ProtocolVersion.fromString(
-            RFB_003_003);
-      Assert.assertEquals(ProtocolVersion.THREE_THREE, protocolVersion);
+   public void returnThreeThree() {
+      final ProtocolVersion parsedVersion = ProtocolVersion.parse("RFB 003.003");
+      assertEquals(3, parsedVersion.getMajorVersion());
+      assertEquals(3, parsedVersion.getMinorVersion());
+   }
+
+   @Test
+   public void returnThreeFive() {
+      final ProtocolVersion parsedVersion = ProtocolVersion.parse("RFB 003.005");
+      assertEquals(3, parsedVersion.getMajorVersion());
+      assertEquals(5, parsedVersion.getMinorVersion());
    }
 }

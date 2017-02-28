@@ -64,6 +64,7 @@ public class VNCRobot implements IRobot {
 	//last positions of mouse cursor
     private int last_x = -1;
     private int last_y = -1;
+    private int buttonState = 0;
     private int autodelay = 0;
     private boolean waitForIdle = false;
     final static int MAX_DELAY = 60000;
@@ -129,7 +130,7 @@ public class VNCRobot implements IRobot {
     @Override
     public void mouseMove(int x, int y){
     	try{
-    		con.getC(index).mouseEvent(0, 0, 0, 0, 0, 0, 0, 0, x, y);
+    		con.getC(index).mouseEvent(buttonState, x, y);
     	}
     	catch(IOException e){
     		Debug.log(-1, "Cannot generate mouse event: "+e);
@@ -148,16 +149,14 @@ public class VNCRobot implements IRobot {
      */
 	@Override
 	public void mouseDown(int buttons) {
-		int[] b = {0,0,0,0,0,0,0,0};
         switch(buttons){
-                case InputEvent.BUTTON1_MASK: b[0]=1; break;
-                case InputEvent.BUTTON2_MASK: b[1]=1; break;
-                case InputEvent.BUTTON3_MASK: b[2]=1; break;
+                case InputEvent.BUTTON1_MASK: buttonState |= VNCClient.VNC_POINTER_EVENT_BUTTON_1; break;
+                case InputEvent.BUTTON2_MASK: buttonState |= VNCClient.VNC_POINTER_EVENT_BUTTON_2; break;
+                case InputEvent.BUTTON3_MASK: buttonState |= VNCClient.VNC_POINTER_EVENT_BUTTON_3; break;
                 default: throw new IllegalArgumentException();
         }
         try{
-        	con.getC(index).mouseEvent(b[0], b[1], b[2],
-                    b[3], b[4], b[5], b[6], b[7], last_x, last_y);
+        	con.getC(index).mouseEvent(buttonState, last_x, last_y);
         }
         catch(IOException e){
         	Debug.log(-1, "Cannot generate mouse event: "+e);
@@ -171,8 +170,26 @@ public class VNCRobot implements IRobot {
      */
 	@Override
 	public int mouseUp(int buttons) {
+		if (buttons == 0) {
+			buttonState = 0;
+		} else {
+			switch (buttons) {
+				case InputEvent.BUTTON1_MASK:
+					buttonState &= ~VNCClient.VNC_POINTER_EVENT_BUTTON_1;
+					break;
+				case InputEvent.BUTTON2_MASK:
+					buttonState &= ~VNCClient.VNC_POINTER_EVENT_BUTTON_2;
+					break;
+				case InputEvent.BUTTON3_MASK:
+					buttonState &= ~VNCClient.VNC_POINTER_EVENT_BUTTON_3;
+					break;
+				default:
+					throw new IllegalArgumentException();
+			}
+		}
+
 		try{
-			con.getC(index).mouseEvent(0,0,0,0,0,0,0,0, last_x, last_y);
+			con.getC(index).mouseEvent(buttonState, last_x, last_y);
         }
         catch(IOException e){
         	Debug.log(-1, "Cannot generate mouse event: "+e);
@@ -184,7 +201,7 @@ public class VNCRobot implements IRobot {
 
   @Override
   public void mouseReset() {
-    //TODO implement mouse reset
+    buttonState = 0;
   }
 
 	/**
@@ -199,8 +216,8 @@ public class VNCRobot implements IRobot {
 		if(wheelAmt > 0){
             for(int i=0 ; i < wheelAmt; i++){
                 try{
-                	con.getC(index).mouseEvent(0,0,0,0,1,0,0,0,last_x,last_y);
-                	con.getC(index).mouseEvent(0,0,0,0,0,0,0,0,last_x,last_y);
+                	con.getC(index).mouseEvent(buttonState | VNCClient.VNC_POINTER_EVENT_BUTTON_5,last_x,last_y);
+                	con.getC(index).mouseEvent(buttonState,last_x,last_y);
                 }
                 catch(IOException e){
                 	Debug.log(-1, "Cannot generate mouse event: "+e);
@@ -210,8 +227,8 @@ public class VNCRobot implements IRobot {
         else{
             for(int j = 0; j > (-wheelAmt); j--){
                 try{
-                	con.getC(index).mouseEvent(0,0,0,1,0,0,0,0,last_x,last_y);
-                	con.getC(index).mouseEvent(0,0,0,0,0,0,0,0,last_x,last_y);
+                	con.getC(index).mouseEvent(buttonState | VNCClient.VNC_POINTER_EVENT_BUTTON_4,last_x,last_y);
+                	con.getC(index).mouseEvent(buttonState,last_x,last_y);
                 }
                 catch(IOException e){
                 	Debug.log(-1, "Cannot generate mouse event: "+e);

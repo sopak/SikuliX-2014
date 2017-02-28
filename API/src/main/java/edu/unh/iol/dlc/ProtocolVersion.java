@@ -1,35 +1,37 @@
 package edu.unh.iol.dlc;
 
-public enum ProtocolVersion {
+import java.util.Comparator;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-   THREE_THREE(3, 3, "RFB 003.003"),
-   THREE_FIVE(3, 5, "RFB 003.007"),
-   THREE_SEVEN(3, 7, "RFB 003.007"),
-   THREE_EIGHT(3, 8, "RFB 003.008"),
-   FOUR_ONE(4, 1, "RFB 003.008");
+public class ProtocolVersion implements Comparable<ProtocolVersion> {
 
+   private static final Pattern VERSION_PATTERN = Pattern.compile("RFB ([0-9]{3})\\.([0-9]{3})");
    final private int majorVersion;
    final private int minorVersion;
    final private String replyCode;
 
-   ProtocolVersion(int majorVersion, int minorVersion, String replyCode) {
+   private ProtocolVersion(int majorVersion, int minorVersion, String replyCode) {
       this.majorVersion = majorVersion;
       this.minorVersion = minorVersion;
       this.replyCode = replyCode;
    }
 
-   public static ProtocolVersion fromString(String protocolString) {
-      VersionParser versionParser = new VersionParser(protocolString);
-      ProtocolVersion parsedVersion;
-      try {
-         parsedVersion = versionParser.parse();
-      } catch (Exception e) {
-         final String error = "Error parsing protocol version: '%s'";
-         final String formattedError = String.format(error, protocolString);
-         throw new RuntimeException(formattedError, e);
+   /**
+    * Parses the VNC string into an instance of object {@link ProtocolVersion}
+    * @return {@link ProtocolVersion} a ProtocolVersion instance
+    */
+   public static ProtocolVersion parse(String protocolString) {
+      if (protocolString == null) {
+         throw new IllegalArgumentException("Protocol input is NULL.");
       }
 
-      return parsedVersion;
+      Matcher m = VERSION_PATTERN.matcher(protocolString);
+      if (m.matches()) {
+         return new ProtocolVersion(Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)), protocolString);
+      } else {
+         throw new IllegalArgumentException(String.format("Invalid protocol version format: '%s'", protocolString));
+      }
    }
 
    public int getMajorVersion() {
@@ -40,15 +42,48 @@ public enum ProtocolVersion {
       return minorVersion;
    }
 
-   public String getReplyCode() {
-      return replyCode;
+   @Override
+   public int compareTo(ProtocolVersion o)
+   {
+      if (majorVersion < o.majorVersion) {
+         return -1;
+      } else if (majorVersion > o.majorVersion) {
+         return 1;
+      }
+
+      if (minorVersion < o.minorVersion) {
+         return -1;
+      } else if (minorVersion > o.minorVersion) {
+         return 1;
+      }
+
+      return 0;
+   }
+
+   @Override
+   public boolean equals(Object o)
+   {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+
+      ProtocolVersion that = (ProtocolVersion) o;
+
+      if (majorVersion != that.majorVersion) return false;
+      if (minorVersion != that.minorVersion) return false;
+      return replyCode.equals(that.replyCode);
+   }
+
+   @Override
+   public int hashCode()
+   {
+      int result = majorVersion;
+      result = 31 * result + minorVersion;
+      result = 31 * result + replyCode.hashCode();
+      return result;
    }
 
    @Override
    public String toString() {
-      return "ProtocolVersion{" +
-             "majorVersion=" + majorVersion +
-             ", minorVersion=" + minorVersion +
-             ", replyCode='" + replyCode + "}";
+      return replyCode;
    }
 }
