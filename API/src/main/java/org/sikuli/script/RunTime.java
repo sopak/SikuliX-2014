@@ -935,7 +935,7 @@ public class RunTime {
       }
       if (shouldAddLibsJar) {
         fpLibsFrom = new File(fSxProject,
-                String.format("Libs%s/target/sikulixlibs%s-1.1.1.jar", sysShort, sysShort)).getAbsolutePath();
+                String.format("Libs%s/target/sikulixlibs%s-1.1.2.jar", sysShort, sysShort)).getAbsolutePath();
       }
       log(lvl, "now exporting libs");
       if (!fpLibsFrom.isEmpty()) {

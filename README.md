@@ -3,7 +3,7 @@
 
 [![Join the chat at https://gitter.im/RaiMan/SikuliX-2014](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/RaiMan/SikuliX-2014?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-This is 1.1.1 after [1.1.0 final (available 2015-10-07)](https://launchpad.net/sikuli/sikulix/1.1.0)
+This is 1.1.2 after [1.1.0 final (available 2015-10-07)](https://launchpad.net/sikuli/sikulix/1.1.0)
 -----------------
 ... a bug-fix release for problems with version 1.1.0
 
@@ -20,7 +20,7 @@ The coordinates:
 ```
 <groupId>com.sikulix</groupId>
 <artifactId>sikulixapi</artifactId>
-<version>1.1.1-SNAPSHOT</version>
+<version>1.1.2-SNAPSHOT</version>
 ```
 
 find an **usage example** in [module TestRunMaven](https://github.com/RaiMan/SikuliX-2014/tree/master/TestRunMaven)

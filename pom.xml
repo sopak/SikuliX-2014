@@ -22,7 +22,7 @@
 
   <groupId>com.sikulix</groupId>
   <artifactId>sikulix1</artifactId>
-  <version>1.1.1</version>
+  <version>1.1.2</version>
 
   <!-- to globally change the pom version:
   mvn versions:set -DnewVersion=1.1.0
