@@ -1,864 +1,712 @@
-/*
- *                       University of New Hampshire
- *                       InterOperability Laboratory
- *                           Copyright (c) 2014
- *
- * This software is provided by the IOL ``AS IS'' and any express or implied
- * warranties, including, but not limited to, the implied warranties of
- * merchantability and fitness for a particular purpose are disclaimed.
- * In no event shall the InterOperability Lab be liable for any direct,
- * indirect, incidental, special, exemplary, or consequential damages.
- *
- * This software may not be resold without the express permission of
- * the InterOperability Lab.
- *
- * Feedback on this code may be sent to Mike Johnson (mjohnson@iol.unh.edu)
- * and dlnalab@iol.unh.edu.
- */
 package edu.unh.iol.dlc;
 
-import java.awt.AWTException;
-import java.awt.Color;
-import java.awt.GraphicsDevice;
-import java.awt.Rectangle;
-import java.awt.event.InputEvent;
+import org.sikuli.basics.Settings;
+import org.sikuli.script.*;
+
+import java.awt.*;
 import java.awt.event.KeyEvent;
-import java.awt.image.BufferedImage;
 import java.io.IOException;
 
-import org.sikuli.script.IRobot;
-import org.sikuli.script.IScreen;
-import org.sikuli.script.Location;
-import org.sikuli.script.ScreenImage;
-import org.sikuli.basics.*;
+import static edu.unh.iol.dlc.XKeySym.*;
+import static java.awt.event.KeyEvent.*;
 
-/**
- * VNCRobot is an implementation of the IRobot interface
- * that controls the VNC stack through a connection controller.
- */
-public class VNCRobot implements IRobot {
+class VNCRobot implements IRobot
+{
+    public static final int VNC_POINTER_EVENT_BUTTON_1 = 1 << 0;
+    public static final int VNC_POINTER_EVENT_BUTTON_2 = 1 << 1;
+    public static final int VNC_POINTER_EVENT_BUTTON_3 = 1 << 2;
+    public static final int VNC_POINTER_EVENT_BUTTON_4 = 1 << 3;
+    public static final int VNC_POINTER_EVENT_BUTTON_5 = 1 << 4;
+    public static final int VNC_POINTER_EVENT_BUTTON_6 = 1 << 5;
+    public static final int VNC_POINTER_EVENT_BUTTON_7 = 1 << 6;
+    public static final int VNC_POINTER_EVENT_BUTTON_8 = 1 << 7;
 
-	private ConnectionController con;
-	private int index;
-	private boolean shiftFlag = false;
-	/**
-	 * Constructor. Only accepts Framebuffer GraphicsDevices
-	 */
-	public VNCRobot(GraphicsDevice gDev) throws AWTException{
-		if(gDev instanceof Framebuffer){
-			con = ConnectionController.getActiveController(0);
-			for(int i = 0; i < con.threads.size(); i++){
-				if(gDev == con.getF(i)){
-					index = i;
-				}
-			}
-		}
-		else{
-			throw new AWTException("Error cannot instantiate Robot" +
-					" for non-remote screen");
-		}
-	}
+    private final VNCScreen screen;
+    private int mouseX;
+    private int mouseY;
+    private int mouseButtons;
+    private int autoDelay;
+    private boolean shift;
 
-//IRobot implementation*******************************************************/
+    public VNCRobot(VNCScreen screen)
+    {
+        this.screen = screen;
+        this.autoDelay = 100;
+    }
 
-	//last positions of mouse cursor
-    private int last_x = -1;
-    private int last_y = -1;
-    private int buttonState = 0;
-    private int autodelay = 0;
-    private boolean waitForIdle = false;
-    final static int MAX_DELAY = 60000;
-
-	/**
-     * Presses a key
-     *
-     * @param keycode the key
-     */
     @Override
-    public void keyDown(int keycode){
-    	if(keycode == KeyEvent.VK_SHIFT){
-    		shiftFlag = true;
-    		return;
-    	}
-    	int key = getKeysym(keycode);
-    	if(key == 0xffffff){
-    		Debug.log(-1, "Error: Key not supprted-"+keycode);
-    	}
-        else{
-            try{
-               con.getC(index).keyDown(key);
-            }
-            catch(IOException e){
-            	Debug.log(-1, "Cannot KeyDown: "+e);
-            }
-        }
-        tidyUp();
+    public ScreenImage captureScreen(Rectangle screenRect)
+    {
+        return screen.capture(screenRect);
     }
 
-    /**
-     * Releases a key
-     *
-     * @param keycode the key
-     */
     @Override
-    public void keyUp(int keycode){
-    	if(keycode==KeyEvent.VK_SHIFT){
-    		shiftFlag = false;
-    		return;
-    	}
-    	int key = getKeysym(keycode);
-        if(key==0xffffff){
-        	Debug.log(-1, "Key not supported "+keycode);
-        }
-        else{
-            try{
-            	con.getC(index).keyUp(key);
-            }
-            catch(IOException e){
-            	Debug.log(-1, "Cannot KeyUp: "+e);
-            }
-        }
-        tidyUp();
+    public boolean isRemote()
+    {
+        return true;
     }
 
-    /**
-     * Moves the mouse to the specified x and y position.
-     *
-     * @param x X coordinate
-     * @param y Y coordinate
-     */
     @Override
-    public void mouseMove(int x, int y){
-    	try{
-    		con.getC(index).mouseEvent(buttonState, x, y);
-    	}
-    	catch(IOException e){
-    		Debug.log(-1, "Cannot generate mouse event: "+e);
-    	}
-    	last_x = x;
-		last_y = y;
-    	tidyUp();
+    public IScreen getScreen()
+    {
+        return screen;
     }
 
-    /**
-     * Presses a mouse button at the current location
-     *
-     * @param buttons can be InputEvent.BUTTON1_MASK
-	 *						InputEvent.BUTTON2_MASK
-	 *						InputEvent.BUTTON3_MASK
-     */
-	@Override
-	public void mouseDown(int buttons) {
-        switch(buttons){
-                case InputEvent.BUTTON1_MASK: buttonState |= VNCClient.VNC_POINTER_EVENT_BUTTON_1; break;
-                case InputEvent.BUTTON2_MASK: buttonState |= VNCClient.VNC_POINTER_EVENT_BUTTON_2; break;
-                case InputEvent.BUTTON3_MASK: buttonState |= VNCClient.VNC_POINTER_EVENT_BUTTON_3; break;
-                default: throw new IllegalArgumentException();
+    @Override
+    public void keyDown(String keys)
+    {
+        for (int i = 0; i < keys.length(); i++) {
+            typeChar(keys.charAt(i), KeyMode.PRESS_ONLY);
         }
-        try{
-        	con.getC(index).mouseEvent(buttonState, last_x, last_y);
+    }
+
+    @Override
+    public void keyUp(String keys)
+    {
+        for (int i = 0; i < keys.length(); i++) {
+            typeChar(keys.charAt(i), KeyMode.RELEASE_ONLY);
         }
-        catch(IOException e){
-        	Debug.log(-1, "Cannot generate mouse event: "+e);
-        }
-        tidyUp();
-	}
+    }
 
-	/**
-     * Releases mouse buttons at last_x and last_y positions
-     *
-     */
-	@Override
-	public int mouseUp(int buttons) {
-		if (buttons == 0) {
-			buttonState = 0;
-		} else {
-			switch (buttons) {
-				case InputEvent.BUTTON1_MASK:
-					buttonState &= ~VNCClient.VNC_POINTER_EVENT_BUTTON_1;
-					break;
-				case InputEvent.BUTTON2_MASK:
-					buttonState &= ~VNCClient.VNC_POINTER_EVENT_BUTTON_2;
-					break;
-				case InputEvent.BUTTON3_MASK:
-					buttonState &= ~VNCClient.VNC_POINTER_EVENT_BUTTON_3;
-					break;
-				default:
-					throw new IllegalArgumentException();
-			}
-		}
+    @Override
+    public void keyDown(int code)
+    {
+        typeKey(code, KeyMode.PRESS_ONLY);
+    }
 
-		try{
-			con.getC(index).mouseEvent(buttonState, last_x, last_y);
-        }
-        catch(IOException e){
-        	Debug.log(-1, "Cannot generate mouse event: "+e);
-        }
-        tidyUp();
+    @Override
+    public void keyUp(int code)
+    {
+        typeCode(keyToXlib(code), KeyMode.RELEASE_ONLY);
+    }
 
-        return 0;
-	}
+    @Override
+    public void keyUp()
+    {
+        // Not implemented
+    }
 
-  @Override
-  public void mouseReset() {
-    buttonState = 0;
-  }
+    @Override
+    public void pressModifiers(int modifiers)
+    {
+        typeModifiers(modifiers, KeyMode.PRESS_ONLY);
+    }
 
-	/**
-     * Method moves the mouse wheel at an x and y position an indicated amount.
-     * If wheelAmt is positive the wheel moves up, if it is
-     * negative, it moves down.
-     *
-     * @param wheelAmt Amount to move wheel
-     */
-	@Override
-	public void mouseWheel(int wheelAmt) {
-		if(wheelAmt > 0){
-            for(int i=0 ; i < wheelAmt; i++){
-                try{
-                	con.getC(index).mouseEvent(buttonState | VNCClient.VNC_POINTER_EVENT_BUTTON_5,last_x,last_y);
-                	con.getC(index).mouseEvent(buttonState,last_x,last_y);
+    @Override
+    public void releaseModifiers(int modifiers)
+    {
+        typeModifiers(modifiers, KeyMode.PRESS_ONLY);
+    }
+
+    private void typeModifiers(int modifiers, KeyMode keyMode)
+    {
+        if ((modifiers & KeyModifier.CTRL) != 0) typeKey(KeyEvent.VK_CONTROL, keyMode);
+        if ((modifiers & KeyModifier.SHIFT) != 0) typeCode(KeyEvent.VK_SHIFT, keyMode);
+        if ((modifiers & KeyModifier.ALT) != 0) typeCode(KeyEvent.VK_ALT, keyMode);
+        if ((modifiers & KeyModifier.ALTGR) != 0) typeCode(KeyEvent.VK_ALT_GRAPH, keyMode);
+        if ((modifiers & KeyModifier.META) != 0) typeCode(KeyEvent.VK_META, keyMode);
+    }
+
+    @Override
+    public void typeStarts()
+    {
+
+    }
+
+    @Override
+    public void typeEnds()
+    {
+
+    }
+
+    @Override
+    public void typeKey(int key)
+    {
+        typeKey(key, KeyMode.PRESS_RELEASE);
+    }
+
+    @Override
+    public void typeChar(char character, KeyMode mode)
+    {
+        typeCode(charToXlib(character), mode);
+    }
+
+    public void typeKey(int key, KeyMode mode)
+    {
+        typeCode(keyToXlib(key), mode);
+    }
+
+    private void typeCode(int xlibCode, KeyMode mode)
+    {
+        boolean addShift = requiresShift(xlibCode);
+        try {
+            if (mode == KeyMode.PRESS_RELEASE || mode == KeyMode.PRESS_ONLY) {
+                if (addShift && !shift) {
+                    screen.getClient().keyDown(XK_Shift_L);
                 }
-                catch(IOException e){
-                	Debug.log(-1, "Cannot generate mouse event: "+e);
+                screen.getClient().keyDown(xlibCode);
+                if (xlibCode == XK_Shift_L || xlibCode == XK_Shift_R || xlibCode == XK_Shift_Lock) {
+                    shift = true;
                 }
             }
-        }
-        else{
-            for(int j = 0; j > (-wheelAmt); j--){
-                try{
-                	con.getC(index).mouseEvent(buttonState | VNCClient.VNC_POINTER_EVENT_BUTTON_4,last_x,last_y);
-                	con.getC(index).mouseEvent(buttonState,last_x,last_y);
+
+            if (mode == KeyMode.PRESS_RELEASE || mode == KeyMode.RELEASE_ONLY) {
+                screen.getClient().keyUp(xlibCode);
+                if (addShift && !shift) {
+                    screen.getClient().keyUp(XK_Shift_L);
                 }
-                catch(IOException e){
-                	Debug.log(-1, "Cannot generate mouse event: "+e);
+
+                if (xlibCode == XK_Shift_L || xlibCode == XK_Shift_R || xlibCode == XK_Shift_Lock) {
+                    shift = false;
                 }
             }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
-		tidyUp();
-	}
-
-	/**
-	 * Creates a screen capture of the remote screen.
-	 *
-	 * @param sr - region to capture
-	 * @return ScreenImage of the remote screen
-	 */
-	@Override
-	public ScreenImage captureScreen(Rectangle sr) {
-		BufferedImage bimg = null;
-		while (bimg == null) {
-			bimg = con.getF(index).getBuffer();
-		}
-		return new ScreenImage(sr, bimg.getSubimage(sr.x, sr.y, sr.width, sr.height));
-	}
-
-	/**
-	 * Returns a BufferedImage of the specified rectangle on the
-	 * remote desktop
-	 *
-	 * @param rect
-	 * @return
-	 */
-	public BufferedImage capture(Rectangle rect){
-		return con.getF(index).getBuffer().getSubimage(
-				rect.x, rect.y,
-				rect.width, rect.height);
-	}
-
-	/**
-	 * Waits until all events are processed.
-	 */
-	@Override
-	public void waitForIdle() {
-		try {
-			new java.awt.Robot().waitForIdle();
-		}
-		catch (AWTException e) {
-			Debug.log(-1, "Error-could non instantiate robot: "+e);
-		}
-	}
-
-	/**
-	 * Sleeps for the specified time.
-	 */
-	@Override
-	public void delay(int ms) {
-		if(ms < 0){
-			ms = 0;
-		}
-		if(ms > MAX_DELAY){
-			ms = MAX_DELAY;
-		}
-		try{
-			Thread.sleep(ms);
-		}
-		catch(InterruptedException e){
-			Debug.log(-1, "Thread Interrupted: "+e);
-		}
-	}
-
-	/**
-	 * Sets the number of milliseconds this Robot sleeps after generating an event.
-	 */
-	@Override
-	public void setAutoDelay(int ms) {
-		if(ms < 0){
-			ms = 0;
-		}
-		if(ms > MAX_DELAY){
-			ms = MAX_DELAY;
-		}
-		autodelay = ms;
-	}
-
-	/**
-	 * drags and drops the mouse
-	 */
-	public void dragDrop(Location start,Location end,int steps,long ms,int buttons){
-        mouseMove(start.x, start.y);
-	    mouseDown(buttons);
-	    delay((int)(Settings.DelayAfterDrag*1000));
-	    waitForIdle();
-	    smoothMove(start, end, ms);
-	    delay((int)(Settings.DelayBeforeDrop*1000));
-	    mouseUp(buttons);
-	    waitForIdle();
-	}
-
-	/**
-	 * Types the specified keyCodes based on a certain KeyMode
-	 *
-	 * @param mode     KeyMode.PRESS_ONLY
-	 * 				   KeyMode.RELEASE_ONLY
-	 * 				   KeyMode.PRESS_RELEASE
-	 * @param keyCodes KeyEvent
-	 */
-	protected void doType(KeyMode mode, int... keyCodes) {
-	      if(mode==KeyMode.PRESS_ONLY){
-	         for(int i=0;i<keyCodes.length;i++){
-	            keyDown(keyCodes[i]);
-	         }
-	      }
-	      else if(mode==KeyMode.RELEASE_ONLY){
-	         for(int i=0;i<keyCodes.length;i++){
-	            keyUp(keyCodes[i]);
-	         }
-	      }
-	      else{
-	         for(int i=0;i<keyCodes.length;i++)
-	            keyDown(keyCodes[i]);
-	         for(int i=0;i<keyCodes.length;i++)
-	            keyUp(keyCodes[i]);
-	      }
-	   }
-
-	@Override
-	   public void typeChar(char character, KeyMode mode) {
-	      switch (character) {
-	         case 'a'     : doType(mode,KeyEvent.VK_A); break;
-	         case 'b'     : doType(mode,KeyEvent.VK_B); break;
-	         case 'c'     : doType(mode,KeyEvent.VK_C); break;
-	         case 'd'     : doType(mode,KeyEvent.VK_D); break;
-	         case 'e'     : doType(mode,KeyEvent.VK_E); break;
-	         case 'f'     : doType(mode,KeyEvent.VK_F); break;
-	         case 'g'     : doType(mode,KeyEvent.VK_G); break;
-	         case 'h'     : doType(mode,KeyEvent.VK_H); break;
-	         case 'i'     : doType(mode,KeyEvent.VK_I); break;
-	         case 'j'     : doType(mode,KeyEvent.VK_J); break;
-	         case 'k'     : doType(mode,KeyEvent.VK_K); break;
-	         case 'l'     : doType(mode,KeyEvent.VK_L); break;
-	         case 'm'     : doType(mode,KeyEvent.VK_M); break;
-	         case 'n'     : doType(mode,KeyEvent.VK_N); break;
-	         case 'o'     : doType(mode,KeyEvent.VK_O); break;
-	         case 'p'     : doType(mode,KeyEvent.VK_P); break;
-	         case 'q'     : doType(mode,KeyEvent.VK_Q); break;
-	         case 'r'     : doType(mode,KeyEvent.VK_R); break;
-	         case 's'     : doType(mode,KeyEvent.VK_S); break;
-	         case 't'     : doType(mode,KeyEvent.VK_T); break;
-	         case 'u'     : doType(mode,KeyEvent.VK_U); break;
-	         case 'v'     : doType(mode,KeyEvent.VK_V); break;
-	         case 'w'     : doType(mode,KeyEvent.VK_W); break;
-	         case 'x'     : doType(mode,KeyEvent.VK_X); break;
-	         case 'y'     : doType(mode,KeyEvent.VK_Y); break;
-	         case 'z'     : doType(mode,KeyEvent.VK_Z); break;
-	         case 'A'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_A); break;
-	         case 'B'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_B); break;
-	         case 'C'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_C); break;
-	         case 'D'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_D); break;
-	         case 'E'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_E); break;
-	         case 'F'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_F); break;
-	         case 'G'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_G); break;
-	         case 'H'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_H); break;
-	         case 'I'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_I); break;
-	         case 'J'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_J); break;
-	         case 'K'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_K); break;
-	         case 'L'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_L); break;
-	         case 'M'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_M); break;
-	         case 'N'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_N); break;
-	         case 'O'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_O); break;
-	         case 'P'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_P); break;
-	         case 'Q'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_Q); break;
-	         case 'R'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_R); break;
-	         case 'S'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_S); break;
-	         case 'T'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_T); break;
-	         case 'U'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_U); break;
-	         case 'V'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_V); break;
-	         case 'W'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_W); break;
-	         case 'X'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_X); break;
-	         case 'Y'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_Y); break;
-	         case 'Z'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_Z); break;
-	         case '`'     : doType(mode,KeyEvent.VK_BACK_QUOTE); break;
-	         case '0'     : doType(mode,KeyEvent.VK_0); break;
-	         case '1'     : doType(mode,KeyEvent.VK_1); break;
-	         case '2'     : doType(mode,KeyEvent.VK_2); break;
-	         case '3'     : doType(mode,KeyEvent.VK_3); break;
-	         case '4'     : doType(mode,KeyEvent.VK_4); break;
-	         case '5'     : doType(mode,KeyEvent.VK_5); break;
-	         case '6'     : doType(mode,KeyEvent.VK_6); break;
-	         case '7'     : doType(mode,KeyEvent.VK_7); break;
-	         case '8'     : doType(mode,KeyEvent.VK_8); break;
-	         case '9'     : doType(mode,KeyEvent.VK_9); break;
-	         case '-'     : doType(mode,KeyEvent.VK_MINUS); break;
-	         case '='     : doType(mode,KeyEvent.VK_EQUALS); break;
-	         case '~'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_BACK_QUOTE); break;
-	         case '!'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_1); break;
-	         case '@'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_2); break;
-	         case '#'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_3); break;
-	         case '$'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_4); break;
-	         case '%'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_5); break;
-	         case '^'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_6); break;
-	         case '&'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_7); break;
-	         case '*'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_8); break;
-	         case '('     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_9); break;
-	         case ')'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_0); break;
-	         case '_'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_MINUS); break;
-	         case '+'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_EQUALS); break;
-	         case '\b'    : doType(mode,KeyEvent.VK_BACK_SPACE); break;
-	         case '\t'    : doType(mode,KeyEvent.VK_TAB); break;
-	         case '\r'    : doType(mode,KeyEvent.VK_ENTER); break;
-	         case '\n'    : doType(mode,KeyEvent.VK_ENTER); break;
-	         case '['     : doType(mode,KeyEvent.VK_OPEN_BRACKET); break;
-	         case ']'     : doType(mode,KeyEvent.VK_CLOSE_BRACKET); break;
-	         case '\\'    : doType(mode,KeyEvent.VK_BACK_SLASH); break;
-	         case '{'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_OPEN_BRACKET); break;
-	         case '}'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_CLOSE_BRACKET); break;
-	         case '|'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_BACK_SLASH); break;
-	         case ';'     : doType(mode,KeyEvent.VK_SEMICOLON); break;
-	         case ':'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_SEMICOLON); break;
-	         case '\''    : doType(mode,KeyEvent.VK_QUOTE); break;
-	         case '"'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_QUOTE); break;
-	         case ','     : doType(mode,KeyEvent.VK_COMMA); break;
-	         case '<'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_COMMA); break;
-	         case '.'     : doType(mode,KeyEvent.VK_PERIOD); break;
-	         case '>'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_PERIOD); break;
-	         case '/'     : doType(mode,KeyEvent.VK_SLASH); break;
-	         case '?'     : doType(mode,KeyEvent.VK_SHIFT, KeyEvent.VK_SLASH); break;
-	         case ' '     : doType(mode,KeyEvent.VK_SPACE); break;
-	         case '\u001b': doType(mode,KeyEvent.VK_ESCAPE); break;
-	         case '\ue000': doType(mode,KeyEvent.VK_UP); break;
-	         case '\ue001': doType(mode,KeyEvent.VK_RIGHT); break;
-	         case '\ue002': doType(mode,KeyEvent.VK_DOWN); break;
-	         case '\ue003': doType(mode,KeyEvent.VK_LEFT); break;
-	         case '\ue004': doType(mode,KeyEvent.VK_PAGE_UP); break;
-	         case '\ue005': doType(mode,KeyEvent.VK_PAGE_DOWN); break;
-	         case '\ue006': doType(mode,KeyEvent.VK_DELETE); break;
-	         case '\ue007': doType(mode,KeyEvent.VK_END); break;
-	         case '\ue008': doType(mode,KeyEvent.VK_HOME); break;
-	         case '\ue009': doType(mode,KeyEvent.VK_INSERT); break;
-	         case '\ue011': doType(mode,KeyEvent.VK_F1); break;
-	         case '\ue012': doType(mode,KeyEvent.VK_F2); break;
-	         case '\ue013': doType(mode,KeyEvent.VK_F3); break;
-	         case '\ue014': doType(mode,KeyEvent.VK_F4); break;
-	         case '\ue015': doType(mode,KeyEvent.VK_F5); break;
-	         case '\ue016': doType(mode,KeyEvent.VK_F6); break;
-	         case '\ue017': doType(mode,KeyEvent.VK_F7); break;
-	         case '\ue018': doType(mode,KeyEvent.VK_F8); break;
-	         case '\ue019': doType(mode,KeyEvent.VK_F9); break;
-	         case '\ue01A': doType(mode,KeyEvent.VK_F10); break;
-	         case '\ue01B': doType(mode,KeyEvent.VK_F11); break;
-	         case '\ue01C': doType(mode,KeyEvent.VK_F12); break;
-	         case '\ue01D': doType(mode,KeyEvent.VK_F13); break;
-	         case '\ue01E': doType(mode,KeyEvent.VK_F14); break;
-	         case '\ue01F': doType(mode,KeyEvent.VK_F15); break;
-	         case '\ue020': doType(mode,KeyEvent.VK_SHIFT); break;
-	         case '\ue021': doType(mode,KeyEvent.VK_CONTROL); break;
-	         case '\ue022': doType(mode,KeyEvent.VK_ALT); break;
-	         case '\ue023': doType(mode,KeyEvent.VK_META); break;
-	         case '\ue024': doType(mode,KeyEvent.VK_PRINTSCREEN); break;
-	         case '\ue025': doType(mode,KeyEvent.VK_SCROLL_LOCK); break;
-	         case '\ue026': doType(mode,KeyEvent.VK_PAUSE); break;
-	         case '\ue027': doType(mode,KeyEvent.VK_CAPS_LOCK); break;
-	         case '\ue030': doType(mode,KeyEvent.VK_NUMPAD0); break;
-	         case '\ue031': doType(mode,KeyEvent.VK_NUMPAD1); break;
-	         case '\ue032': doType(mode,KeyEvent.VK_NUMPAD2); break;
-	         case '\ue033': doType(mode,KeyEvent.VK_NUMPAD3); break;
-	         case '\ue034': doType(mode,KeyEvent.VK_NUMPAD4); break;
-	         case '\ue035': doType(mode,KeyEvent.VK_NUMPAD5); break;
-	         case '\ue036': doType(mode,KeyEvent.VK_NUMPAD6); break;
-	         case '\ue037': doType(mode,KeyEvent.VK_NUMPAD7); break;
-	         case '\ue038': doType(mode,KeyEvent.VK_NUMPAD8); break;
-	         case '\ue039': doType(mode,KeyEvent.VK_NUMPAD9); break;
-	         case '\ue03A': doType(mode,KeyEvent.VK_SEPARATOR); break;
-	         case '\ue03B': doType(mode,KeyEvent.VK_NUM_LOCK); break;
-	         case '\ue03C': doType(mode,KeyEvent.VK_ADD); break;
-	         case '\ue03D': doType(mode,KeyEvent.VK_MINUS); break;
-	         case '\ue03E': doType(mode,KeyEvent.VK_MULTIPLY); break;
-	         case '\ue03F': doType(mode,KeyEvent.VK_DIVIDE); break;
-	         default:
-	            throw new IllegalArgumentException("Cannot type character " + character);
-	      }
-	   }
-
-	/**
-	 * Smooth moves the mouse
-	 */
-	@Override
-	public void smoothMove(Location dest) {
-		smoothMove(new Location(last_x,last_y),
-				dest, (long)(Settings.MoveMouseDelay*1000L));
-	}
-
-	/**
-	 * Uses the Animator class to smooth move the mouse
-	 */
-	@Override
-	public void smoothMove(Location src, Location dest, long ms) {
-		if(ms == 0){
-			mouseMove(dest.x, dest.y);
-	         return;
-		}
-
-		AnimatorTimeBased aniX = new AnimatorTimeBased(
-	                        new AnimatorOutQuarticEase((float)src.x, (float)dest.x, ms));
-		AnimatorTimeBased aniY = new AnimatorTimeBased(
-	                        new AnimatorOutQuarticEase((float)src.y, (float)dest.y, ms));
-		while(aniX.running()){
-			float x = aniX.step();
-			float y = aniY.step();
-			mouseMove((int)x, (int)y);
-			delay(50);
-		}
-	}
-
-	//Other functions//////////////////////////////////////////////////////////
-
-	/**
-     * Helper function that converts from KeyEvent.VK_(key) to
-     * X11 Keysyms for use in RFB Protocol Messages.
-     *
-     */
-    private int getKeysym(int keycode){
-        int key;
-        if(shiftFlag){
-        	switch(keycode){
-        	case (KeyEvent.VK_0): key=0x0029; break; //right paren
-            case (KeyEvent.VK_1): key=0x0021; break; //exclaimation
-            case (KeyEvent.VK_2): key=0x0040; break; //at sign
-            case (KeyEvent.VK_3): key=0x0023; break; //number sign
-            case (KeyEvent.VK_4): key=0x0024; break; //dollar
-            case (KeyEvent.VK_5): key=0x0025; break; //percent
-            case (KeyEvent.VK_6): key=0x005e; break; //circumflex
-            case (KeyEvent.VK_7): key=0x0026; break; //ampersand
-            case (KeyEvent.VK_8): key=0x002a; break; //asterisk
-            case (KeyEvent.VK_9): key=0x0028; break; //left paren
-            case (KeyEvent.VK_BACK_SPACE): key=0xff08; break;
-            case (KeyEvent.VK_TAB): key=0xfd05; break; //back tab
-            case (KeyEvent.VK_ENTER): key=0xff0d; break;
-            case (KeyEvent.VK_INSERT): key=0xfd1d; break; //printscreen
-            case (KeyEvent.VK_DELETE): key=0xffff; break;
-            case (KeyEvent.VK_HOME): key=0xff50; break;
-            case (KeyEvent.VK_END): key=0xff57; break;
-            case (KeyEvent.VK_PAGE_UP): key=0xff55; break;
-            case (KeyEvent.VK_PAGE_DOWN): key=0xff56; break;
-            case (KeyEvent.VK_LEFT): key=0xff51; break;
-            case (KeyEvent.VK_UP): key=0xff52; break;
-            case (KeyEvent.VK_RIGHT): key=0xff53; break;
-            case (KeyEvent.VK_DOWN): key=0xff54; break;
-            case (KeyEvent.VK_F1): key=0xffbe; break;
-            case (KeyEvent.VK_F2): key=0xffbf; break;
-            case (KeyEvent.VK_F3): key=0xffc0; break;
-            case (KeyEvent.VK_F4): key=0xffc1; break;
-            case (KeyEvent.VK_F5): key=0xffc2; break;
-            case (KeyEvent.VK_F6): key=0xffc3; break;
-            case (KeyEvent.VK_F7): key=0xffc4; break;
-            case (KeyEvent.VK_F8): key=0xffc5; break;
-            case (KeyEvent.VK_F9): key=0xffc6; break;
-            case (KeyEvent.VK_F10): key=0xffc7; break;
-            case (KeyEvent.VK_F11): key=0xffc8; break;
-            case (KeyEvent.VK_F12): key=0xffc9; break;
-            case (KeyEvent.VK_CONTROL): key=0xffe3; break;
-            case (KeyEvent.VK_META): key=0xffe7; break;
-            case (KeyEvent.VK_ALT): key=0xffe9; break;
-            case (KeyEvent.VK_A): key=0x0041; break;//A
-            case (KeyEvent.VK_B): key=0x0042; break;//B
-            case (KeyEvent.VK_C): key=0x0043; break;//C
-            case (KeyEvent.VK_D): key=0x0044; break;//D
-            case (KeyEvent.VK_E): key=0x0045; break;//E
-            case (KeyEvent.VK_F): key=0x0046; break;//F
-            case (KeyEvent.VK_G): key=0x0047; break;//G
-            case (KeyEvent.VK_H): key=0x0048; break;//H
-            case (KeyEvent.VK_I): key=0x0049; break;//I
-            case (KeyEvent.VK_J): key=0x004a; break;//J
-            case (KeyEvent.VK_K): key=0x004b; break;//K
-            case (KeyEvent.VK_L): key=0x004c; break;//L
-            case (KeyEvent.VK_M): key=0x004d; break;//M
-            case (KeyEvent.VK_N): key=0x004e; break;//N
-            case (KeyEvent.VK_O): key=0x004f; break;//O
-            case (KeyEvent.VK_P): key=0x0050; break;//P
-            case (KeyEvent.VK_Q): key=0x0051; break;//Q
-            case (KeyEvent.VK_R): key=0x0052; break;//R
-            case (KeyEvent.VK_S): key=0x0053; break;//S
-            case (KeyEvent.VK_T): key=0x0054; break;//T
-            case (KeyEvent.VK_U): key=0x0055; break;//U
-            case (KeyEvent.VK_V): key=0x0056; break;//V
-            case (KeyEvent.VK_W): key=0x0057; break;//W
-            case (KeyEvent.VK_X): key=0x0058; break;//X
-            case (KeyEvent.VK_Y): key=0x0059; break;//Y
-            case (KeyEvent.VK_Z): key=0x005a; break;//Z
-            case (KeyEvent.VK_SPACE): key=0x0020; break;
-            case (KeyEvent.VK_BACK_QUOTE): key=0x007e; break; //~
-            case (KeyEvent.VK_MINUS): key=0x005f; break;//_
-            case (KeyEvent.VK_EQUALS): key=0x002b; break;//+
-            case (KeyEvent.VK_QUOTE): key=0x0022; break;//"
-            case (KeyEvent.VK_SEMICOLON): key=0x003a; break;//:
-            case (KeyEvent.VK_BACK_SLASH): key=0x007c; break;//|
-            case (KeyEvent.VK_BRACELEFT): key=0x007b; break;//{
-            case (KeyEvent.VK_BRACERIGHT): key=0x007d; break;//}
-            case (KeyEvent.VK_PERIOD): key=0x003e; break;//>
-            case (KeyEvent.VK_COMMA): key=0x003c; break;//<
-            case (KeyEvent.VK_SLASH): key=0x003f; break;//?
-            case (KeyEvent.VK_PLUS): key=0x002b; break;
-            case (KeyEvent.VK_OPEN_BRACKET): key=0x007b; break;//{
-            case (KeyEvent.VK_CLOSE_BRACKET): key=0x007d; break;//}
-            case (KeyEvent.VK_ESCAPE): key=0xff1b; break;
-            case (KeyEvent.VK_F13): key=0xffca; break;
-            case (KeyEvent.VK_F14): key=0xffcb; break;
-            case (KeyEvent.VK_F15): key=0xffcb; break;
-            case (KeyEvent.VK_PRINTSCREEN): key=0xfd1d; break;
-            case (KeyEvent.VK_SCROLL_LOCK): key=0xff14; break;
-            case (KeyEvent.VK_PAUSE): key=0xff13; break;
-            case (KeyEvent.VK_CAPS_LOCK): key=0xffe5; break;
-            case (KeyEvent.VK_NUMPAD0): key=0x0030; break;
-            case (KeyEvent.VK_NUMPAD1): key=0x0031; break;
-            case (KeyEvent.VK_NUMPAD2): key=0x0032; break;
-            case (KeyEvent.VK_NUMPAD3): key=0x0033; break;
-            case (KeyEvent.VK_NUMPAD4): key=0x0034; break;
-            case (KeyEvent.VK_NUMPAD5): key=0x0035; break;
-            case (KeyEvent.VK_NUMPAD6): key=0x0036; break;
-            case (KeyEvent.VK_NUMPAD7): key=0x0037; break;
-            case (KeyEvent.VK_NUMPAD8): key=0x0038; break;
-            case (KeyEvent.VK_NUMPAD9): key=0x0039; break;
-            case (KeyEvent.VK_SEPARATOR): key=0xffac; break;
-            case (KeyEvent.VK_NUM_LOCK): key=0xff7f; break;
-            case (KeyEvent.VK_MULTIPLY): key=0x002a; break;
-            case (KeyEvent.VK_ADD): key=0x002b; break;
-            case (KeyEvent.VK_DIVIDE): key=0x002f; break;
-            default: key=0xffffff; break;
-        	}
-        }
-        else{
-        	switch(keycode){
-            case (KeyEvent.VK_0): key=0x0030; break;//0
-            case (KeyEvent.VK_1): key=0x0031; break;//1
-            case (KeyEvent.VK_2): key=0x0032; break;//2
-            case (KeyEvent.VK_3): key=0x0033; break;//3
-            case (KeyEvent.VK_4): key=0x0034; break;//4
-            case (KeyEvent.VK_5): key=0x0035; break;//5
-            case (KeyEvent.VK_6): key=0x0036; break;//6
-            case (KeyEvent.VK_7): key=0x0037; break;//7
-            case (KeyEvent.VK_8): key=0x0038; break;//8
-            case (KeyEvent.VK_9): key=0x0039; break;//9
-            case (KeyEvent.VK_BACK_SPACE): key=0xff08; break;
-            case (KeyEvent.VK_TAB): key=0xff09; break;
-            case (KeyEvent.VK_ENTER): key=0xff0d; break;
-            case (KeyEvent.VK_INSERT): key=0xff63; break;
-            case (KeyEvent.VK_DELETE): key=0xffff; break;
-            case (KeyEvent.VK_HOME): key=0xff50; break;
-            case (KeyEvent.VK_END): key=0xff57; break;
-            case (KeyEvent.VK_PAGE_UP): key=0xff55; break;
-            case (KeyEvent.VK_PAGE_DOWN): key=0xff56; break;
-            case (KeyEvent.VK_LEFT): key=0xff51; break;
-            case (KeyEvent.VK_UP): key=0xff52; break;
-            case (KeyEvent.VK_RIGHT): key=0xff53; break;
-            case (KeyEvent.VK_DOWN): key=0xff54; break;
-            case (KeyEvent.VK_F1): key=0xffbe; break;
-            case (KeyEvent.VK_F2): key=0xffbf; break;
-            case (KeyEvent.VK_F3): key=0xffc0; break;
-            case (KeyEvent.VK_F4): key=0xffc1; break;
-            case (KeyEvent.VK_F5): key=0xffc2; break;
-            case (KeyEvent.VK_F6): key=0xffc3; break;
-            case (KeyEvent.VK_F7): key=0xffc4; break;
-            case (KeyEvent.VK_F8): key=0xffc5; break;
-            case (KeyEvent.VK_F9): key=0xffc6; break;
-            case (KeyEvent.VK_F10): key=0xffc7; break;
-            case (KeyEvent.VK_F11): key=0xffc8; break;
-            case (KeyEvent.VK_F12): key=0xffc9; break;
-            case (KeyEvent.VK_CONTROL): key=0xffe3; break;
-            case (KeyEvent.VK_META): key=0xffe7; break;
-            case (KeyEvent.VK_ALT): key=0xffe9; break;
-            case (KeyEvent.VK_A): key=0x0061; break;//a
-            case (KeyEvent.VK_B): key=0x0062; break;//b
-            case (KeyEvent.VK_C): key=0x0063; break;//c
-            case (KeyEvent.VK_D): key=0x0064; break;//d
-            case (KeyEvent.VK_E): key=0x0065; break;//e
-            case (KeyEvent.VK_F): key=0x0066; break;//f
-            case (KeyEvent.VK_G): key=0x0067; break;//g
-            case (KeyEvent.VK_H): key=0x0068; break;//h
-            case (KeyEvent.VK_I): key=0x0069; break;//i
-            case (KeyEvent.VK_J): key=0x006a; break;//j
-            case (KeyEvent.VK_K): key=0x006b; break;//k
-            case (KeyEvent.VK_L): key=0x006c; break;//l
-            case (KeyEvent.VK_M): key=0x006d; break;//m
-            case (KeyEvent.VK_N): key=0x006e; break;//n
-            case (KeyEvent.VK_O): key=0x006f; break;//o
-            case (KeyEvent.VK_P): key=0x0070; break;//p
-            case (KeyEvent.VK_Q): key=0x0071; break;//q
-            case (KeyEvent.VK_R): key=0x0072; break;//r
-            case (KeyEvent.VK_S): key=0x0073; break;//s
-            case (KeyEvent.VK_T): key=0x0074; break;//t
-            case (KeyEvent.VK_U): key=0x0075; break;//u
-            case (KeyEvent.VK_V): key=0x0076; break;//v
-            case (KeyEvent.VK_W): key=0x0077; break;//w
-            case (KeyEvent.VK_X): key=0x0078; break;//x
-            case (KeyEvent.VK_Y): key=0x0079; break;//y
-            case (KeyEvent.VK_Z): key=0x007a; break;//z
-            case (KeyEvent.VK_SPACE): key=0x0020; break;
-            case (KeyEvent.VK_BACK_QUOTE): key=0x0060; break;//`
-            case (KeyEvent.VK_MINUS): key=0x002d; break;//-
-            case (KeyEvent.VK_EQUALS): key=0x003d; break;//=
-            case (KeyEvent.VK_QUOTE): key=0x0027; break;//'
-            case (KeyEvent.VK_SEMICOLON): key=0x003b; break;//;
-            case (KeyEvent.VK_BACK_SLASH): key=0x005c; break;//\
-            case (KeyEvent.VK_BRACELEFT): key=0x005b; break;//{
-            case (KeyEvent.VK_BRACERIGHT): key=0x005d; break;//}
-            case (KeyEvent.VK_PERIOD): key=0x002e; break;//.
-            case (KeyEvent.VK_COMMA): key=0x002c; break;//,
-            case (KeyEvent.VK_SLASH): key=0x002f; break;///
-            case (KeyEvent.VK_PLUS): key=0x002b; break;//+
-            case (KeyEvent.VK_OPEN_BRACKET): key=0x005b; break;//[
-            case (KeyEvent.VK_CLOSE_BRACKET): key=0x005d; break;//]
-            case (KeyEvent.VK_ESCAPE): key=0xff1b; break;
-            case (KeyEvent.VK_F13): key=0xffca; break;
-            case (KeyEvent.VK_F14): key=0xffcb; break;
-            case (KeyEvent.VK_F15): key=0xffcb; break;
-            case (KeyEvent.VK_PRINTSCREEN): key=0xfd1d; break;
-            case (KeyEvent.VK_SCROLL_LOCK): key=0xff14; break;
-            case (KeyEvent.VK_PAUSE): key=0xff13; break;
-            case (KeyEvent.VK_CAPS_LOCK): key=0xffe5; break;
-            case (KeyEvent.VK_NUMPAD0): key=0x0030; break;//0
-            case (KeyEvent.VK_NUMPAD1): key=0x0031; break;//1
-            case (KeyEvent.VK_NUMPAD2): key=0x0032; break;//2
-            case (KeyEvent.VK_NUMPAD3): key=0x0033; break;//3
-            case (KeyEvent.VK_NUMPAD4): key=0x0034; break;//4
-            case (KeyEvent.VK_NUMPAD5): key=0x0035; break;//5
-            case (KeyEvent.VK_NUMPAD6): key=0x0036; break;//6
-            case (KeyEvent.VK_NUMPAD7): key=0x0037; break;//7
-            case (KeyEvent.VK_NUMPAD8): key=0x0038; break;//8
-            case (KeyEvent.VK_NUMPAD9): key=0x0039; break;//9
-            case (KeyEvent.VK_SEPARATOR): key=0xffac; break;
-            case (KeyEvent.VK_NUM_LOCK): key=0xff7f; break;
-            case (KeyEvent.VK_MULTIPLY): key=0x002a; break;
-            case (KeyEvent.VK_ADD): key=0x002b; break;
-            case (KeyEvent.VK_DIVIDE): key=0x002f; break;
-            default: key=0xffffff; break;
-        	}
-        }
-        Debug.log(3, "Keycode-"+keycode);
-        Debug.log(3, "Shiftflag-"+shiftFlag);
-        Debug.log(3, "Key-"+Integer.toHexString(key));
-        return key;
     }
 
-    /**
-     * Executes after Robot performs action
-     */
-    private void tidyUp(){
-    	if(waitForIdle){
-    		waitForIdle();
-    	}
-    	delay(autodelay);
+    private int charToXlib(char c)
+    {
+        if (c >= 0x0020 && c <= 0x00FF) {
+            return c;
+        }
+
+        switch (c) {
+            case '\u0008':
+                return XK_BackSpace;
+            case '\u0009':
+                return XK_Tab;
+            case '\n':
+                return XK_Linefeed;
+            case '\u000b':
+                return XK_Clear;
+            case '\r':
+                return XK_Return;
+            case '\u0013':
+                return XK_Pause;
+            case '\u0014':
+                return XK_Scroll_Lock;
+            case '\u0015':
+                return XK_Sys_Req;
+            case '\u001b':
+                return XK_Escape;
+            case '\u007f':
+                return XK_Delete;
+            default:
+                throw new IllegalArgumentException("Cannot type character " + c);
+        }
     }
 
-//NEW SIKULI METHODS
+    private int keyToXlib(int code)
+    {
+        switch (code) {
+            case VK_ENTER:
+                return XK_Return;
+            case VK_BACK_SPACE:
+                return XK_BackSpace;
+            case VK_TAB:
+                return XK_Tab;
+            case VK_CANCEL:
+                return XK_Cancel;
+            case VK_CLEAR:
+                return XK_Clear;
+            case VK_SHIFT:
+                return XK_Shift_L;
+            case VK_CONTROL:
+                return XK_Control_L;
+            case VK_ALT:
+                return XK_Alt_L;
+            case VK_PAUSE:
+                return XK_Pause;
+            case VK_CAPS_LOCK:
+                return XK_Caps_Lock;
+            case VK_ESCAPE:
+                return XK_Escape;
+            case VK_SPACE:
+                return XK_space;
+            case VK_PAGE_UP:
+                return XK_Page_Up;
+            case VK_PAGE_DOWN:
+                return XK_Page_Down;
+            case VK_END:
+                return XK_End;
+            case VK_HOME:
+                return XK_Home;
+            case VK_LEFT:
+                return XK_Left;
+            case VK_UP:
+                return XK_Up;
+            case VK_RIGHT:
+                return XK_Right;
+            case VK_DOWN:
+                return XK_Down;
+            case VK_COMMA:
+                return XK_comma;
+            case VK_MINUS:
+                return XK_minus;
+            case VK_PERIOD:
+                return XK_period;
+            case VK_SLASH:
+                return XK_slash;
+            case VK_0:
+                return XK_0;
+            case VK_1:
+                return XK_1;
+            case VK_2:
+                return XK_2;
+            case VK_3:
+                return XK_3;
+            case VK_4:
+                return XK_4;
+            case VK_5:
+                return XK_5;
+            case VK_6:
+                return XK_6;
+            case VK_7:
+                return XK_7;
+            case VK_8:
+                return XK_8;
+            case VK_9:
+                return XK_9;
+            case VK_SEMICOLON:
+                return XK_semicolon;
+            case VK_EQUALS:
+                return XK_equal;
+            case VK_A:
+                return shift ? XK_A : XK_a;
+            case VK_B:
+                return shift ? XK_B : XK_b;
+            case VK_C:
+                return shift ? XK_C : XK_c;
+            case VK_D:
+                return shift ? XK_D : XK_d;
+            case VK_E:
+                return shift ? XK_E : XK_e;
+            case VK_F:
+                return shift ? XK_F : XK_f;
+            case VK_G:
+                return shift ? XK_G : XK_g;
+            case VK_H:
+                return shift ? XK_H : XK_h;
+            case VK_I:
+                return shift ? XK_I : XK_i;
+            case VK_J:
+                return shift ? XK_J : XK_j;
+            case VK_K:
+                return shift ? XK_K : XK_k;
+            case VK_L:
+                return shift ? XK_L : XK_l;
+            case VK_M:
+                return shift ? XK_M : XK_m;
+            case VK_N:
+                return shift ? XK_N : XK_n;
+            case VK_O:
+                return shift ? XK_O : XK_o;
+            case VK_P:
+                return shift ? XK_P : XK_p;
+            case VK_Q:
+                return shift ? XK_Q : XK_q;
+            case VK_R:
+                return shift ? XK_R : XK_r;
+            case VK_S:
+                return shift ? XK_S : XK_s;
+            case VK_T:
+                return shift ? XK_T : XK_t;
+            case VK_U:
+                return shift ? XK_U : XK_u;
+            case VK_V:
+                return shift ? XK_V : XK_v;
+            case VK_W:
+                return shift ? XK_W : XK_w;
+            case VK_X:
+                return shift ? XK_X : XK_x;
+            case VK_Y:
+                return shift ? XK_Y : XK_y;
+            case VK_Z:
+                return shift ? XK_Z : XK_z;
+            case VK_OPEN_BRACKET:
+                return XK_bracketleft;
+            case VK_BACK_SLASH:
+                return XK_backslash;
+            case VK_CLOSE_BRACKET:
+                return XK_bracketright;
+            case VK_NUMPAD0:
+                return XK_KP_0;
+            case VK_NUMPAD1:
+                return XK_KP_1;
+            case VK_NUMPAD2:
+                return XK_KP_2;
+            case VK_NUMPAD3:
+                return XK_KP_3;
+            case VK_NUMPAD4:
+                return XK_KP_4;
+            case VK_NUMPAD5:
+                return XK_KP_5;
+            case VK_NUMPAD6:
+                return XK_KP_6;
+            case VK_NUMPAD7:
+                return XK_KP_7;
+            case VK_NUMPAD8:
+                return XK_KP_8;
+            case VK_NUMPAD9:
+                return XK_KP_9;
+            case VK_MULTIPLY:
+                return XK_KP_Multiply;
+            case VK_ADD:
+                return XK_KP_Add;
+            case VK_SEPARATOR:
+                return XK_KP_Separator;
+            case VK_SUBTRACT:
+                return XK_KP_Subtract;
+            case VK_DECIMAL:
+                return XK_KP_Decimal;
+            case VK_DIVIDE:
+                return XK_KP_Divide;
+            case VK_DELETE:
+                return XK_KP_Delete;
+            case VK_NUM_LOCK:
+                return XK_Num_Lock;
+            case VK_SCROLL_LOCK:
+                return XK_Scroll_Lock;
+            case VK_F1:
+                return XK_F1;
+            case VK_F2:
+                return XK_F2;
+            case VK_F3:
+                return XK_F3;
+            case VK_F4:
+                return XK_F4;
+            case VK_F5:
+                return XK_F5;
+            case VK_F6:
+                return XK_F6;
+            case VK_F7:
+                return XK_F7;
+            case VK_F8:
+                return XK_F8;
+            case VK_F9:
+                return XK_F9;
+            case VK_F10:
+                return XK_F10;
+            case VK_F11:
+                return XK_F11;
+            case VK_F12:
+                return XK_F12;
+            case VK_F13:
+                return XK_F13;
+            case VK_F14:
+                return XK_F14;
+            case VK_F15:
+                return XK_F15;
+            case VK_F16:
+                return XK_F16;
+            case VK_F17:
+                return XK_F17;
+            case VK_F18:
+                return XK_F18;
+            case VK_F19:
+                return XK_F19;
+            case VK_F20:
+                return XK_F20;
+            case VK_F21:
+                return XK_F21;
+            case VK_F22:
+                return XK_F22;
+            case VK_F23:
+                return XK_F23;
+            case VK_F24:
+                return XK_F24;
 
-	@Override
-	public void keyDown(String keys) {
-		// TODO Auto-generated method stub
+            case VK_PRINTSCREEN:
+                return XK_Print;
+            case VK_INSERT:
+                return XK_Insert;
+            case VK_HELP:
+                return XK_Help;
+            case VK_META:
+                return XK_Meta_L;
+            case VK_KP_UP:
+                return XK_KP_Up;
+            case VK_KP_DOWN:
+                return XK_KP_Down;
+            case VK_KP_LEFT:
+                return XK_KP_Left;
+            case VK_KP_RIGHT:
+                return XK_KP_Right;
+            case VK_DEAD_GRAVE:
+                return XK_dead_grave;
+            case VK_DEAD_ACUTE:
+                return XK_dead_acute;
+            case VK_DEAD_CIRCUMFLEX:
+                return XK_dead_circumflex;
+            case VK_DEAD_TILDE:
+                return XK_dead_tilde;
+            case VK_DEAD_MACRON:
+                return XK_dead_macron;
+            case VK_DEAD_BREVE:
+                return XK_dead_breve;
+            case VK_DEAD_ABOVEDOT:
+                return XK_dead_abovedot;
+            case VK_DEAD_DIAERESIS:
+                return XK_dead_diaeresis;
+            case VK_DEAD_ABOVERING:
+                return XK_dead_abovering;
+            case VK_DEAD_DOUBLEACUTE:
+                return XK_dead_doubleacute;
+            case VK_DEAD_CARON:
+                return XK_dead_caron;
+            case VK_DEAD_CEDILLA:
+                return XK_dead_cedilla;
+            case VK_DEAD_OGONEK:
+                return XK_dead_ogonek;
+            case VK_DEAD_IOTA:
+                return XK_dead_iota;
+            case VK_DEAD_VOICED_SOUND:
+                return XK_dead_voiced_sound;
+            case VK_DEAD_SEMIVOICED_SOUND:
+                return XK_dead_semivoiced_sound;
+            case VK_AMPERSAND:
+                return XK_ampersand;
+            case VK_ASTERISK:
+                return XK_asterisk;
+            case VK_QUOTEDBL:
+                return XK_quotedbl;
+            case VK_LESS:
+                return XK_less;
+            case VK_GREATER:
+                return XK_greater;
+            case VK_BRACELEFT:
+                return XK_bracketleft;
+            case VK_BRACERIGHT:
+                return XK_bracketright;
+            case VK_AT:
+                return XK_at;
+            case VK_COLON:
+                return XK_colon;
+            case VK_CIRCUMFLEX:
+                return XK_acircumflex;
+            case VK_DOLLAR:
+                return XK_dollar;
+            case VK_EURO_SIGN:
+                return XK_EuroSign;
+            case VK_EXCLAMATION_MARK:
+                return XK_exclam;
+            case VK_INVERTED_EXCLAMATION_MARK:
+                return XK_exclamdown;
+            case VK_LEFT_PARENTHESIS:
+                return XK_parenleft;
+            case VK_NUMBER_SIGN:
+                return XK_numbersign;
+            case VK_PLUS:
+                return XK_plus;
+            case VK_RIGHT_PARENTHESIS:
+                return XK_parenright;
+            case VK_UNDERSCORE:
+                return XK_underscore;
+            case VK_WINDOWS:
+                return XK_Super_L;
+            case VK_COMPOSE:
+                return XK_Multi_key;
+            case VK_ALT_GRAPH:
+                return XK_ISO_Level3_Shift;
+            case VK_BEGIN:
+                return XK_Begin;
+        }
+        throw new IllegalArgumentException("Cannot type keycode " + code);
+    }
 
-	}
+    private boolean requiresShift(int xlibKeySym)
+    {
+        // This is keyboard layout dependent.
+        // Encode here is for US layout
+        switch (xlibKeySym) {
+            case XK_A:
+            case XK_B:
+            case XK_C:
+            case XK_D:
+            case XK_E:
+            case XK_F:
+            case XK_G:
+            case XK_H:
+            case XK_I:
+            case XK_J:
+            case XK_K:
+            case XK_L:
+            case XK_M:
+            case XK_N:
+            case XK_O:
+            case XK_P:
+            case XK_Q:
+            case XK_R:
+            case XK_S:
+            case XK_T:
+            case XK_U:
+            case XK_V:
+            case XK_W:
+            case XK_X:
+            case XK_Y:
+            case XK_Z:
+            case XK_exclam:
+            case XK_at:
+            case XK_numbersign:
+            case XK_dollar:
+            case XK_percent:
+            case XK_asciicircum:
+            case XK_ampersand:
+            case XK_asterisk:
+            case XK_parenleft:
+            case XK_parenright:
+            case XK_underscore:
+            case XK_plus:
+            case XK_braceleft:
+            case XK_braceright:
+            case XK_colon:
+            case XK_quotedbl:
+            case XK_bar:
+            case XK_less:
+            case XK_greater:
+            case XK_question:
+            case XK_asciitilde:
+            case XK_plusminus:
+                return true;
+            default:
+                return false;
+        }
 
-	@Override
-	public void keyUp(String keys) {
-		// TODO Auto-generated method stub
+    }
 
-	}
+    @Override
+    public void mouseMove(int x, int y)
+    {
+        try {
+            screen.getClient().mouseEvent(mouseButtons, x, y);
+            mouseX = x;
+            mouseY = y;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
-	@Override
-	public void keyUp() {
-		// TODO Auto-generated method stub
+    @Override
+    public void mouseDown(int buttons)
+    {
+        if ((buttons & Mouse.LEFT) != 0) mouseButtons |= VNC_POINTER_EVENT_BUTTON_1;
+        if ((buttons & Mouse.MIDDLE) != 0) mouseButtons |= VNC_POINTER_EVENT_BUTTON_2;
+        if ((buttons & Mouse.RIGHT) != 0) mouseButtons |= VNC_POINTER_EVENT_BUTTON_3;
+        mouseMove(mouseX, mouseY);
+    }
 
-	}
+    @Override
+    public int mouseUp(int buttons)
+    {
+        if ((buttons & Mouse.LEFT) != 0) mouseButtons &= ~VNC_POINTER_EVENT_BUTTON_1;
+        if ((buttons & Mouse.MIDDLE) != 0) mouseButtons &= ~VNC_POINTER_EVENT_BUTTON_2;
+        if ((buttons & Mouse.RIGHT) != 0) mouseButtons &= ~VNC_POINTER_EVENT_BUTTON_3;
+        mouseMove(mouseX, mouseY);
 
-	@Override
-	public void pressModifiers(int modifiers) {
-		// TODO Auto-generated method stub
+        int remainingButtons = 0;
+        if ((mouseButtons & VNC_POINTER_EVENT_BUTTON_1) != 0) remainingButtons |= Mouse.LEFT;
+        if ((mouseButtons & VNC_POINTER_EVENT_BUTTON_2) != 0) remainingButtons |= Mouse.MIDDLE;
+        if ((mouseButtons & VNC_POINTER_EVENT_BUTTON_3) != 0) remainingButtons |= Mouse.RIGHT;
+        return remainingButtons;
+    }
 
-	}
+    @Override
+    public void mouseReset()
+    {
+        mouseButtons = 0;
+        mouseMove(mouseX, mouseY);
+    }
 
-	@Override
-	public void releaseModifiers(int modifiers) {
-		// TODO Auto-generated method stub
+    @Override
+    public void clickStarts()
+    {
 
-	}
+    }
 
-	@Override
-	public void typeKey(int key) {
-		// TODO Auto-generated method stub
+    @Override
+    public void clickEnds()
+    {
 
-	}
+    }
 
-	@Override
-	public void typeStarts() {
-		// TODO Auto-generated method stub
+    @Override
+    public void smoothMove(Location dest)
+    {
+        smoothMove(new Location(mouseX, mouseY), dest, (long) (Settings.MoveMouseDelay * 1000L));
+    }
 
-	}
+    @Override
+    public void smoothMove(Location src, Location dest, long duration)
+    {
+        if (duration <= 0) {
+            mouseMove(dest.getX(), dest.getY());
+            return;
+        }
 
-	@Override
-	public void typeEnds() {
-		// TODO Auto-generated method stub
+        float x = src.getX();
+        float y = src.getY();
+        float dx = dest.getX() - src.getX();
+        float dy = dest.getY() - src.getY();
 
-	}
+        long start = System.currentTimeMillis();
+        long elapsed = 0;
+        do {
+            float fraction = (float) elapsed / (float) duration;
+            mouseMove((int) (x + fraction * dx), (int) (y + fraction * dy));
+            delay(autoDelay);
+            elapsed = System.currentTimeMillis() - start;
+        } while (elapsed < duration);
+        mouseMove(dest.x, dest.y);
+    }
 
-	@Override
-	public void clickStarts() {
-		// TODO Auto-generated method stub
+    @Override
+    public void mouseWheel(int wheelAmt)
+    {
+        if (wheelAmt == Mouse.WHEEL_DOWN) {
+            mouseButtons |= VNC_POINTER_EVENT_BUTTON_5;
+            mouseMove(mouseX, mouseY);
+            mouseButtons &= ~VNC_POINTER_EVENT_BUTTON_5;
+            mouseMove(mouseX, mouseY);
+        } else if (wheelAmt == Mouse.WHEEL_UP) {
+            mouseButtons |= VNC_POINTER_EVENT_BUTTON_4;
+            mouseMove(mouseX, mouseY);
+            mouseButtons &= ~VNC_POINTER_EVENT_BUTTON_4;
+            mouseMove(mouseX, mouseY);
+        }
+    }
 
-	}
+    @Override
+    public void waitForIdle()
+    {
+    }
 
-	@Override
-	public void clickEnds() {
-		// TODO Auto-generated method stub
+    @Override
+    public void delay(int ms)
+    {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            // ignored
+        }
+    }
 
-	}
+    @Override
+    public void setAutoDelay(int ms)
+    {
+        autoDelay = ms;
+    }
 
-	@Override
-	public Color getColorAt(int x, int y) {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    @Override
+    public Color getColorAt(int x, int y)
+    {
+        ScreenImage image = captureScreen(new Rectangle(x, y, 1, 1));
+        return new Color(image.getImage().getRGB(0, 0));
+    }
 
-	@Override
-	public void cleanup() {
-	}
+    @Override
+    public void cleanup()
+    {
 
-	@Override
-	public boolean isRemote() {
-		return true;
-	}
-
-	@Override
-	public IScreen getScreen() {
-		return null;
-	}
+    }
 }

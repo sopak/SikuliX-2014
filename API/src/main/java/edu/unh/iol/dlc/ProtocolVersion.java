@@ -1,11 +1,9 @@
 package edu.unh.iol.dlc;
 
-import java.util.Comparator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class ProtocolVersion implements Comparable<ProtocolVersion> {
-
+class ProtocolVersion implements Comparable<ProtocolVersion> {
    private static final Pattern VERSION_PATTERN = Pattern.compile("RFB ([0-9]{3})\\.([0-9]{3})");
    final private int majorVersion;
    final private int minorVersion;
