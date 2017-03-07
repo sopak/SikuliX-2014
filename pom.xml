@@ -55,7 +55,7 @@
     <sikuli.jarname>${project.version}</sikuli.jarname>
     <sikulixvmaj>1</sikulixvmaj>
     <sikulixvmin>1</sikulixvmin>
-    <sikulixvsub>1</sikulixvsub>
+    <sikulixvsub>2</sikulixvsub>
     <sikulixbeta>0</sikulixbeta>
     <!--   this decides, where setup downloads from   -->
     <!--<sikulixdev>release</sikulixdev>-->
