@@ -13,6 +13,7 @@ import java.io.IOException;
 public class VNCScreen extends Region implements IScreen, Closeable
 {
     private final VNCClient client;
+    private volatile boolean closed;
     private final IRobot robot;
     private ScreenImage lastScreenImage;
 
@@ -37,7 +38,13 @@ public class VNCScreen extends Region implements IScreen, Closeable
             @Override
             public void run()
             {
-                client.processMessages();
+                try {
+                    client.processMessages();
+                } catch (RuntimeException e) {
+                    if (!closed) {
+                        throw e;
+                    }
+                }
             }
         }).start();
         client.refreshFramebuffer();
@@ -46,6 +53,7 @@ public class VNCScreen extends Region implements IScreen, Closeable
     @Override
     public void close() throws IOException
     {
+        closed = true;
         client.close();
     }
 
