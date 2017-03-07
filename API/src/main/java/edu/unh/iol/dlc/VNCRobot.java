@@ -95,7 +95,7 @@ class VNCRobot implements IRobot
     @Override
     public void releaseModifiers(int modifiers)
     {
-        typeModifiers(modifiers, KeyMode.PRESS_ONLY);
+        typeModifiers(modifiers, KeyMode.RELEASE_ONLY);
     }
 
     private void typeModifiers(int modifiers, KeyMode keyMode)
