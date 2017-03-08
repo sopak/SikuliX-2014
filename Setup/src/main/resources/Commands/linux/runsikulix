@@ -24,3 +24,4 @@ else
   echo "Error: terminating: $sjar.jar not found at: "$shome
 fi
 
+exit $?
